@@ -1,0 +1,87 @@
+name: CI Test Matrix
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: ci-test-matrix-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  tests:
+    name: tests (${{ matrix.backend }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - backend: sqlite
+            db_url: ""
+            needs_iris: false
+          - backend: iris
+            db_url: iris://_SYSTEM:SYS@127.0.0.1:1972/USER
+            needs_iris: true
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Install dependencies
+        run: uv sync --extra dev --extra iris
+
+      - name: Start IRIS container
+        if: matrix.needs_iris
+        run: docker run -d --name lomem-iris -p 1972:1972 intersystemsdc/iris-community:2025.3
+
+      - name: Wait for IRIS instance
+        if: matrix.needs_iris
+        shell: bash
+        run: |
+          for i in {1..40}; do
+            status="$(docker exec lomem-iris iris list | sed -n 's/^\s*status:\s*//p' | head -n1)"
+            if [[ "$status" == running* ]]; then
+              echo "IRIS is running: $status"
+              exit 0
+            fi
+            echo "Waiting for IRIS to finish starting: ${status:-unknown status}"
+            sleep 5
+          done
+          echo "IRIS did not finish starting in time."
+          docker logs lomem-iris || true
+          exit 1
+
+      - name: Configure IRIS test user
+        if: matrix.needs_iris
+        run: |
+          output="$(docker exec -i lomem-iris iris session IRIS -U %SYS <<'EOF'
+          Set props("ChangePassword")=0
+          Write ##class(Security.Users).Modify("_SYSTEM",.props),!
+          Halt
+          EOF
+          )"
+          echo "$output"
+          grep -q '^1$' <<<"$output"
+
+      - name: Run backend tests
+        env:
+          LOMEM_DB_BACKEND: ${{ matrix.backend }}
+          LOMEM_DB_URL: ${{ matrix.db_url }}
+        run: |
+          if [ "${{ matrix.backend }}" = "sqlite" ]; then
+            uv run --extra dev pytest -q -k "not backend-iris"
+          else
+            uv run --extra dev pytest -q
+          fi
