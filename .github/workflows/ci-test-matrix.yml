@@ -9,6 +9,9 @@ concurrency:
   group: ci-test-matrix-${{ github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+
 jobs:
   tests:
     name: tests (${{ matrix.backend }})
