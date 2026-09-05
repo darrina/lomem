@@ -10,34 +10,20 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  tests-sqlite:
-    name: tests (sqlite)
+  tests:
+    name: tests (${{ matrix.backend }})
     runs-on: ubuntu-latest
 
-    steps:
-      - name: Check out repository
-        uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-
-      - name: Set up uv
-        uses: astral-sh/setup-uv@v5
-
-      - name: Install dependencies
-        run: uv sync --extra dev --extra iris
-
-      - name: Run sqlite tests
-        env:
-          LOMEM_DB_BACKEND: sqlite
-          LOMEM_DB_URL: ""
-        run: uv run --extra dev pytest -q -k "not backend-iris"
-
-  tests-iris:
-    name: tests (iris)
-    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - backend: sqlite
+            db_url: ""
+            pytest_args: "-k 'not backend-iris'"
+          - backend: iris
+            db_url: "******127.0.0.1:1972/USER"
+            pytest_args: ""
 
     services:
       iris:
@@ -66,6 +52,7 @@ jobs:
         run: uv sync --extra dev --extra iris
 
       - name: Wait for IRIS port
+        if: matrix.backend == 'iris'
         shell: bash
         run: |
           for i in {1..40}; do
@@ -80,12 +67,13 @@ jobs:
           exit 1
 
       - name: Change IRIS default password
+        if: matrix.backend == 'iris'
         run: |
           docker exec $(docker ps -q --filter "ancestor=intersystemsdc/iris-community:2025.3") \
             iris session IRIS -U %SYS "##class(Security.Users).ChangePassword(\"_SYSTEM\",\"SYS\")"
 
-      - name: Run iris tests
+      - name: Run tests
         env:
-          LOMEM_DB_BACKEND: iris
-          LOMEM_DB_URL: ${{ 'iris://_SYSTEM:SYS@127.0.0.1:1972/USER' }}
-        run: uv run --extra dev pytest -q
+          LOMEM_DB_BACKEND: ${{ matrix.backend }}
+          LOMEM_DB_URL: ${{ matrix.db_url }}
+        run: uv run --extra dev pytest -q ${{ matrix.pytest_args }}
