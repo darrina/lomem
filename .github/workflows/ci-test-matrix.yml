@@ -10,16 +10,38 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  tests:
+  tests-sqlite:
+    name: tests (sqlite)
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        backend: [sqlite, iris]
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Install dependencies
+        run: uv sync --extra dev --extra iris
+
+      - name: Run sqlite tests
+        env:
+          LOMEM_DB_BACKEND: sqlite
+          LOMEM_DB_URL: ""
+        run: uv run --extra dev pytest -q
+
+  tests-iris:
+    name: tests (iris)
+    runs-on: ubuntu-latest
 
     services:
       iris:
-        image: intersystemsdc/iris-community:latest
+        image: intersystemsdc/iris-community:2025.3
         ports:
           - 1972:1972
         options: >-
@@ -44,7 +66,6 @@ jobs:
         run: uv sync --extra dev --extra iris
 
       - name: Wait for IRIS port
-        if: matrix.backend == 'iris'
         shell: bash
         run: |
           for i in {1..40}; do
@@ -58,8 +79,8 @@ jobs:
           echo "IRIS did not become reachable in time."
           exit 1
 
-      - name: Run backend test matrix
+      - name: Run iris tests
         env:
-          LOMEM_DB_BACKEND: ${{ matrix.backend }}
-          LOMEM_DB_URL: ${{ matrix.backend == 'iris' && 'iris://_SYSTEM:SYS@127.0.0.1:1972/USER' || '' }}
+          LOMEM_DB_BACKEND: iris
+          LOMEM_DB_URL: ${{ 'iris://_SYSTEM:SYS@127.0.0.1:1972/USER' }}
         run: uv run --extra dev pytest -q
