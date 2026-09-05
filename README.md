@@ -12,6 +12,8 @@ This repository now includes a Phase 3 near-functional prototype with:
 - Run telemetry and structured feedback capture persisted to SQLite.
 - Feedback summary metrics for usability tracking by tester and task completion rate.
 - Stability analytics summarizing mean and variance of run scores by scenario.
+- A pluggable SQLAlchemy-based persistence layer with backend switching between SQLite and IRIS.
+- Liquibase-style export/import bundles for repeatable state migration.
 - Baseline tests for deterministic engine behavior and core API/UI paths.
 
 ## Quick start
@@ -23,10 +25,36 @@ python run.py
 
 Open `http://127.0.0.1:5000` in a browser.
 
+## Persistence configuration
+
+Configure persistence with environment variables:
+
+- `LOMEM_DB_BACKEND`: `sqlite` (default) or `iris`
+- `LOMEM_DB_PATH`: path for SQLite files (default `data/lomem.db`)
+- `LOMEM_DB_URL`: optional full SQLAlchemy URL; required for IRIS
+
+Examples:
+
+```bash
+# Default sqlite
+LOMEM_DB_BACKEND=sqlite
+LOMEM_DB_PATH=data/lomem.db
+
+# IRIS via SQLAlchemy URL
+LOMEM_DB_BACKEND=iris
+LOMEM_DB_URL=iris://_SYSTEM:SYS@localhost:1972/USER
+```
+
+If you use IRIS, install optional dependencies:
+
+```bash
+python -m pip install -e ".[iris]"
+```
+
 ## Data and persistence
 
 - Dataset catalog: `data/scenarios.json`
-- Local run/telemetry database: `data/lomem.db`
+- Local run/telemetry database: configured by `LOMEM_DB_BACKEND` + `LOMEM_DB_PATH`/`LOMEM_DB_URL`
 
 ## API contracts (prototype)
 
@@ -135,3 +163,40 @@ Returns a phase-3 stability snapshot:
 - per-scenario mean/standard deviation for primary score
 - per-scenario mean confidence
 - overall primary-score mean and standard deviation
+
+### `GET /api/persistence/info`
+Returns the active persistence backend and SQLAlchemy URL.
+
+### `GET /api/persistence/export`
+Exports database state as a portable bundle:
+
+- format/version metadata
+- row counts
+- runs/events/feedback datasets
+
+This is intended as a lightweight, Liquibase-like export artifact for migration and environment sync.
+
+### `POST /api/persistence/import`
+Imports a bundle into the active database.
+
+Required payload shape:
+
+```json
+{
+  "mode": "merge",
+  "bundle": {
+    "format": "lomem-persistence-bundle",
+    "version": 1,
+    "data": {
+      "runs": [],
+      "events": [],
+      "feedback": []
+    }
+  }
+}
+```
+
+`mode` options:
+
+- `merge`: upsert rows by primary key
+- `replace`: clear existing rows, then import bundle data

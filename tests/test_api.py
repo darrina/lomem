@@ -10,7 +10,9 @@ def client(tmp_path):
     app = create_app(
         {
             "TESTING": True,
+            "LOMEM_DB_BACKEND": "sqlite",
             "LOMEM_DB_PATH": str(tmp_path / "lomem-test.db"),
+            "LOMEM_DB_URL": None,
             "LOMEM_DATA_PATH": str(Path(__file__).resolve().parents[1] / "data" / "scenarios.json"),
         }
     )
@@ -173,3 +175,70 @@ def test_ui_smoke(client):
 
     assert response.status_code == 200
     assert b"LoMem Phase 3 Near-Functional Prototype" in response.data
+
+
+def test_persistence_export_and_replace_import(client):
+    run_response = client.post(
+        "/api/runs",
+        json={
+            "dataset_id": "minimal-baseline",
+            "scenario_id": "alpha-stability",
+            "inputs": {
+                "memory_load": 50,
+                "signal_strength": 70,
+                "noise_level": 20,
+                "adaptation_bias": 0.1,
+            },
+        },
+    )
+    run_id = run_response.get_json()["run_id"]
+    client.post(
+        "/api/feedback",
+        json={
+            "run_id": run_id,
+            "rating": 5,
+            "comment": "Good run.",
+            "tester_id": "phase3-user",
+            "task_completed": True,
+        },
+    )
+
+    info_response = client.get("/api/persistence/info")
+    info_body = info_response.get_json()
+    assert info_response.status_code == 200
+    assert info_body["backend"] == "sqlite"
+
+    export_response = client.get("/api/persistence/export")
+    export_body = export_response.get_json()
+    assert export_response.status_code == 200
+    assert export_body["format"] == "lomem-persistence-bundle"
+    assert export_body["counts"]["runs"] == 1
+    assert export_body["counts"]["feedback"] == 1
+
+    client.post(
+        "/api/runs",
+        json={
+            "dataset_id": "minimal-baseline",
+            "scenario_id": "beta-stress",
+            "inputs": {
+                "memory_load": 40,
+                "signal_strength": 70,
+                "noise_level": 10,
+                "adaptation_bias": 0.0,
+            },
+        },
+    )
+    runs_before_import = client.get("/api/runs?limit=10").get_json()["runs"]
+    assert len(runs_before_import) == 2
+
+    import_response = client.post(
+        "/api/persistence/import",
+        json={"mode": "replace", "bundle": export_body},
+    )
+    import_body = import_response.get_json()
+    assert import_response.status_code == 201
+    assert import_body["status"] == "imported"
+    assert import_body["counts"]["runs"] == 1
+
+    runs_after_import = client.get("/api/runs?limit=10").get_json()["runs"]
+    assert len(runs_after_import) == 1
