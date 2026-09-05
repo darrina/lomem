@@ -33,7 +33,7 @@ jobs:
         env:
           LOMEM_DB_BACKEND: sqlite
           LOMEM_DB_URL: ""
-        run: uv run --extra dev pytest -q
+        run: uv run --extra dev pytest -q -k "not backend-iris"
 
   tests-iris:
     name: tests (iris)
