@@ -79,6 +79,11 @@ jobs:
           echo "IRIS did not become reachable in time."
           exit 1
 
+      - name: Change IRIS default password
+        run: |
+          docker exec $(docker ps -q --filter "ancestor=intersystemsdc/iris-community:2025.3") \
+            iris session IRIS -U %SYS "##class(Security.Users).ChangePassword(\"_SYSTEM\",\"SYS\")"
+
       - name: Run iris tests
         env:
           LOMEM_DB_BACKEND: iris
