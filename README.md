@@ -2,15 +2,16 @@
 
 Prototype incremental-view update agentic memory system.
 
-## Phase 2 prototype
+## Phase 3 prototype
 
-This repository now includes a Phase 2 interactive prototype with:
+This repository now includes a Phase 3 near-functional prototype with:
 
 - A pluggable placeholder validation engine.
-- A web UI for scenario execution, output inspection, recent run browsing, and pairwise run comparison.
+- A richer web UI for single runs, batch experiment sweeps, detailed run browsing, and pairwise run comparison.
 - Strict input validation and explicit API error responses.
 - Run telemetry and structured feedback capture persisted to SQLite.
 - Feedback summary metrics for usability tracking by tester and task completion rate.
+- Stability analytics summarizing mean and variance of run scores by scenario.
 - Baseline tests for deterministic engine behavior and core API/UI paths.
 
 ## Quick start
@@ -60,6 +61,9 @@ Input constraints:
 ### `GET /api/runs`
 Lists recent run metadata (supports `?limit=1..100`).
 
+### `GET /api/runs/detailed`
+Lists recent run records with full inputs and outputs (supports `?limit=1..500`).
+
 ### `GET /api/runs/<run_id>`
 Returns run details including normalized inputs and engine output.
 
@@ -71,6 +75,33 @@ Required payload shape:
 ```json
 {
   "run_ids": ["<baseline-run-id>", "<candidate-run-id>"]
+}
+```
+
+### `POST /api/runs/batch`
+Runs a set of input variants for one dataset/scenario and returns summary statistics.
+
+Required payload shape:
+
+```json
+{
+  "label": "memory-load-sweep",
+  "dataset_id": "minimal-baseline",
+  "scenario_id": "alpha-stability",
+  "variants": [
+    {
+      "memory_load": 10,
+      "signal_strength": 72,
+      "noise_level": 22,
+      "adaptation_bias": 0.2
+    },
+    {
+      "memory_load": 30,
+      "signal_strength": 72,
+      "noise_level": 22,
+      "adaptation_bias": 0.2
+    }
+  ]
 }
 ```
 
@@ -96,3 +127,11 @@ Returns aggregate usability metrics:
 - average rating
 - task completion success rate
 - per-tester submission and quality summary
+
+### `GET /api/analytics/stability`
+Returns a phase-3 stability snapshot:
+
+- total run count
+- per-scenario mean/standard deviation for primary score
+- per-scenario mean confidence
+- overall primary-score mean and standard deviation
