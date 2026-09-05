@@ -13,28 +13,16 @@ jobs:
   tests:
     name: tests (${{ matrix.backend }})
     runs-on: ubuntu-latest
-
     strategy:
       fail-fast: false
       matrix:
         include:
           - backend: sqlite
             db_url: ""
-            pytest_args: "-k 'not backend-iris'"
+            needs_iris: false
           - backend: iris
-            db_url: "******127.0.0.1:1972/USER"
-            pytest_args: ""
-
-    services:
-      iris:
-        image: intersystemsdc/iris-community:2025.3
-        ports:
-          - 1972:1972
-        options: >-
-          --health-cmd "iris session IRIS 'write 1' || exit 1"
-          --health-interval 30s
-          --health-timeout 10s
-          --health-retries 20
+            db_url: iris://_SYSTEM:SYS@127.0.0.1:1972/USER
+            needs_iris: true
 
     steps:
       - name: Check out repository
@@ -51,8 +39,12 @@ jobs:
       - name: Install dependencies
         run: uv sync --extra dev --extra iris
 
+      - name: Start IRIS container
+        if: matrix.needs_iris
+        run: docker run -d --name lomem-iris -p 1972:1972 intersystemsdc/iris-community:2025.3
+
       - name: Wait for IRIS port
-        if: matrix.backend == 'iris'
+        if: matrix.needs_iris
         shell: bash
         run: |
           for i in {1..40}; do
@@ -64,16 +56,22 @@ jobs:
             sleep 5
           done
           echo "IRIS did not become reachable in time."
+          docker logs lomem-iris || true
           exit 1
 
-      - name: Change IRIS default password
-        if: matrix.backend == 'iris'
+      - name: Configure IRIS test password
+        if: matrix.needs_iris
         run: |
-          docker exec $(docker ps -q --filter "ancestor=intersystemsdc/iris-community:2025.3") \
-            iris session IRIS -U %SYS "##class(Security.Users).ChangePassword(\"_SYSTEM\",\"SYS\")"
+          docker exec lomem-iris iris session IRIS -U %SYS \
+            '##class(Security.Users).ChangePassword("_SYSTEM","SYS")'
 
-      - name: Run tests
+      - name: Run backend tests
         env:
           LOMEM_DB_BACKEND: ${{ matrix.backend }}
           LOMEM_DB_URL: ${{ matrix.db_url }}
-        run: uv run --extra dev pytest -q ${{ matrix.pytest_args }}
+        run: |
+          if [ "${{ matrix.backend }}" = "sqlite" ]; then
+            uv run --extra dev pytest -q -k "not backend-iris"
+          else
+            uv run --extra dev pytest -q
+          fi
