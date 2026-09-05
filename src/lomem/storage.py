@@ -6,7 +6,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, String, Text, create_engine, func
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text, create_engine, func
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column, relationship, sessionmaker
 
 
@@ -224,39 +224,42 @@ class Storage:
 
     def get_feedback_summary(self) -> dict[str, Any]:
         with self.session_factory() as session:
-            feedback_count, average_rating, task_success_rate = (
-                session.query(
-                    func.count(FeedbackModel.id),
-                    func.coalesce(func.avg(FeedbackModel.rating), 0.0),
-                    func.coalesce(func.avg(func.cast(FeedbackModel.task_completed, Float)), 0.0),
-                ).one()
+            feedback_rows = session.query(FeedbackModel).all()
+
+        feedback_count = len(feedback_rows)
+        average_rating = sum(row.rating for row in feedback_rows) / feedback_count if feedback_rows else 0.0
+        task_success_rate = (
+            sum(float(row.task_completed) for row in feedback_rows) / feedback_count if feedback_rows else 0.0
+        )
+        by_tester: dict[str, dict[str, float | int]] = {}
+        for row in feedback_rows:
+            stats = by_tester.setdefault(
+                row.tester_id,
+                {
+                    "submissions": 0,
+                    "rating_total": 0.0,
+                    "task_completed_total": 0.0,
+                },
             )
-            by_tester_rows = (
-                session.query(
-                    FeedbackModel.tester_id,
-                    func.count(FeedbackModel.id).label("submissions"),
-                    func.round(func.avg(FeedbackModel.rating), 3).label("average_rating"),
-                    func.round(func.avg(func.cast(FeedbackModel.task_completed, Float)), 3).label(
-                        "task_success_rate"
-                    ),
-                )
-                .group_by(FeedbackModel.tester_id)
-                .order_by(func.count(FeedbackModel.id).desc(), FeedbackModel.tester_id.asc())
-                .all()
-            )
+            stats["submissions"] += 1
+            stats["rating_total"] += float(row.rating)
+            stats["task_completed_total"] += float(row.task_completed)
 
         return {
-            "feedback_count": int(feedback_count),
+            "feedback_count": feedback_count,
             "average_rating": round(float(average_rating), 3),
             "task_success_rate": round(float(task_success_rate), 3),
             "by_tester": [
                 {
-                    "tester_id": row.tester_id,
-                    "submissions": int(row.submissions),
-                    "average_rating": float(row.average_rating),
-                    "task_success_rate": float(row.task_success_rate),
+                    "tester_id": tester_id,
+                    "submissions": stats["submissions"],
+                    "average_rating": round(stats["rating_total"] / stats["submissions"], 3),
+                    "task_success_rate": round(stats["task_completed_total"] / stats["submissions"], 3),
                 }
-                for row in by_tester_rows
+                for tester_id, stats in sorted(
+                    by_tester.items(),
+                    key=lambda item: (-item[1]["submissions"], item[0]),
+                )
             ],
         }
 

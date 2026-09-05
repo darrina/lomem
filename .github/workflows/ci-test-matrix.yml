@@ -43,27 +43,34 @@ jobs:
         if: matrix.needs_iris
         run: docker run -d --name lomem-iris -p 1972:1972 intersystemsdc/iris-community:2025.3
 
-      - name: Wait for IRIS port
+      - name: Wait for IRIS instance
         if: matrix.needs_iris
         shell: bash
         run: |
           for i in {1..40}; do
-            if (echo > /dev/tcp/127.0.0.1/1972) >/dev/null 2>&1; then
-              echo "IRIS is reachable on 127.0.0.1:1972"
+            status="$(docker exec lomem-iris iris list | sed -n 's/^\s*status:\s*//p' | head -n1)"
+            if [[ "$status" == running* ]]; then
+              echo "IRIS is running: $status"
               exit 0
             fi
-            echo "Waiting for IRIS to start..."
+            echo "Waiting for IRIS to finish starting: ${status:-unknown status}"
             sleep 5
           done
-          echo "IRIS did not become reachable in time."
+          echo "IRIS did not finish starting in time."
           docker logs lomem-iris || true
           exit 1
 
-      - name: Configure IRIS test password
+      - name: Configure IRIS test user
         if: matrix.needs_iris
         run: |
-          docker exec lomem-iris iris session IRIS -U %SYS \
-            '##class(Security.Users).ChangePassword("_SYSTEM","SYS")'
+          output="$(docker exec -i lomem-iris iris session IRIS -U %SYS <<'EOF'
+          Set props("ChangePassword")=0
+          Write ##class(Security.Users).Modify("_SYSTEM",.props),!
+          Halt
+          EOF
+          )"
+          echo "$output"
+          grep -q '^1$' <<<"$output"
 
       - name: Run backend tests
         env:
