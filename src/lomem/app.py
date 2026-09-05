@@ -8,7 +8,12 @@ from .config import Config
 from .datasets import build_index, load_catalog
 from .engine import execute_validation, to_dict
 from .storage import Storage
-from .validation import ValidationError, validate_feedback_payload, validate_run_payload
+from .validation import (
+    ValidationError,
+    validate_compare_payload,
+    validate_feedback_v2_payload,
+    validate_run_payload,
+)
 
 
 def _error_response(message: str, status_code: int, errors: dict[str, str] | None = None):
@@ -85,11 +90,53 @@ def create_app(test_config: dict[str, Any] | None = None) -> Flask:
             return _error_response("Run not found.", 404)
         return jsonify(run)
 
+    @app.post("/api/runs/compare")
+    def compare_runs():
+        payload = request.get_json(silent=True)
+        try:
+            run_ids = validate_compare_payload(payload)
+        except ValidationError as err:
+            return _error_response(err.message, 400, err.errors)
+
+        runs = []
+        for run_id in run_ids:
+            run = storage.get_run(run_id)
+            if run is None:
+                return _error_response(f"Run not found: {run_id}", 404)
+            runs.append(run)
+
+        baseline = runs[0]
+        baseline_score = baseline["output"]["primary_score"]
+        comparisons = []
+        for candidate in runs[1:]:
+            candidate_score = candidate["output"]["primary_score"]
+            comparisons.append(
+                {
+                    "run_id": candidate["run_id"],
+                    "delta_primary_score": round(candidate_score - baseline_score, 6),
+                    "delta_confidence": round(
+                        candidate["output"]["confidence"] - baseline["output"]["confidence"], 6
+                    ),
+                    "dataset_changed": candidate["dataset_id"] != baseline["dataset_id"],
+                    "scenario_changed": candidate["scenario_id"] != baseline["scenario_id"],
+                }
+            )
+
+        response_payload = {
+            "baseline_run_id": baseline["run_id"],
+            "baseline_primary_score": baseline_score,
+            "comparisons": comparisons,
+        }
+        storage.record_event(None, "runs_compared", response_payload)
+        return jsonify(response_payload)
+
     @app.post("/api/feedback")
     def create_feedback():
         payload = request.get_json(silent=True)
         try:
-            run_id, rating, comment = validate_feedback_payload(payload)
+            run_id, rating, comment, tester_id, task_completed = validate_feedback_v2_payload(
+                payload
+            )
         except ValidationError as err:
             return _error_response(err.message, 400, err.errors)
 
@@ -97,12 +144,21 @@ def create_app(test_config: dict[str, Any] | None = None) -> Flask:
         if run is None:
             return _error_response("Run not found for provided run_id.", 404)
 
-        storage.save_feedback(run_id, rating, comment)
+        storage.save_feedback(run_id, rating, comment, tester_id, task_completed)
         storage.record_event(
             run_id,
             "feedback_submitted",
-            {"rating": rating, "comment_length": len(comment)},
+            {
+                "rating": rating,
+                "comment_length": len(comment),
+                "tester_id": tester_id,
+                "task_completed": task_completed,
+            },
         )
         return jsonify({"status": "recorded", "run_id": run_id}), 201
+
+    @app.get("/api/feedback/summary")
+    def feedback_summary():
+        return jsonify(storage.get_feedback_summary())
 
     return app

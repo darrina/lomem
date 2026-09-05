@@ -2,14 +2,15 @@
 
 Prototype incremental-view update agentic memory system.
 
-## Phase 1 MVP
+## Phase 2 prototype
 
-This repository now includes a Phase 1 MVP vertical slice with:
+This repository now includes a Phase 2 interactive prototype with:
 
 - A pluggable placeholder validation engine.
-- A minimal web UI for scenario execution and output inspection.
+- A web UI for scenario execution, output inspection, recent run browsing, and pairwise run comparison.
 - Strict input validation and explicit API error responses.
-- Run telemetry and feedback capture persisted to SQLite.
+- Run telemetry and structured feedback capture persisted to SQLite.
+- Feedback summary metrics for usability tracking by tester and task completion rate.
 - Baseline tests for deterministic engine behavior and core API/UI paths.
 
 ## Quick start
@@ -62,6 +63,17 @@ Lists recent run metadata (supports `?limit=1..100`).
 ### `GET /api/runs/<run_id>`
 Returns run details including normalized inputs and engine output.
 
+### `POST /api/runs/compare`
+Compares 2 to 5 runs using the first run as baseline.
+
+Required payload shape:
+
+```json
+{
+  "run_ids": ["<baseline-run-id>", "<candidate-run-id>"]
+}
+```
+
 ### `POST /api/feedback`
 Stores structured feedback for a run.
 
@@ -71,6 +83,16 @@ Required payload shape:
 {
   "run_id": "<uuid>",
   "rating": 4,
-  "comment": "Clear enough for phase 1."
+  "comment": "Clear enough for phase 2.",
+  "tester_id": "pilot-user-1",
+  "task_completed": true
 }
 ```
+
+### `GET /api/feedback/summary`
+Returns aggregate usability metrics:
+
+- total feedback count
+- average rating
+- task completion success rate
+- per-tester submission and quality summary
