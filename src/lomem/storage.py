@@ -48,10 +48,27 @@ class Storage:
                     run_id TEXT NOT NULL,
                     rating INTEGER NOT NULL,
                     comment TEXT NOT NULL,
+                    tester_id TEXT NOT NULL DEFAULT 'anonymous',
+                    task_completed INTEGER NOT NULL DEFAULT 0,
                     created_at TEXT NOT NULL,
                     FOREIGN KEY (run_id) REFERENCES runs(run_id)
                 );
                 """
+            )
+            self._ensure_feedback_columns(connection)
+
+    def _ensure_feedback_columns(self, connection: sqlite3.Connection) -> None:
+        existing_columns = {
+            row["name"]
+            for row in connection.execute("PRAGMA table_info(feedback)").fetchall()
+        }
+        if "tester_id" not in existing_columns:
+            connection.execute(
+                "ALTER TABLE feedback ADD COLUMN tester_id TEXT NOT NULL DEFAULT 'anonymous'"
+            )
+        if "task_completed" not in existing_columns:
+            connection.execute(
+                "ALTER TABLE feedback ADD COLUMN task_completed INTEGER NOT NULL DEFAULT 0"
             )
 
     def record_event(self, run_id: str | None, event_type: str, payload: dict[str, Any]) -> None:
@@ -140,12 +157,58 @@ class Storage:
             for row in rows
         ]
 
-    def save_feedback(self, run_id: str, rating: int, comment: str) -> None:
+    def save_feedback(
+        self,
+        run_id: str,
+        rating: int,
+        comment: str,
+        tester_id: str = "anonymous",
+        task_completed: bool = False,
+    ) -> None:
         with self._connect() as connection:
             connection.execute(
                 """
-                INSERT INTO feedback (run_id, rating, comment, created_at)
-                VALUES (?, ?, ?, ?)
+                INSERT INTO feedback (run_id, rating, comment, tester_id, task_completed, created_at)
+                VALUES (?, ?, ?, ?, ?, ?)
                 """,
-                (run_id, rating, comment, _now_iso()),
+                (run_id, rating, comment, tester_id, int(task_completed), _now_iso()),
             )
+
+    def get_feedback_summary(self) -> dict[str, Any]:
+        with self._connect() as connection:
+            aggregate = connection.execute(
+                """
+                SELECT
+                    COUNT(*) AS feedback_count,
+                    COALESCE(AVG(rating), 0) AS average_rating,
+                    COALESCE(AVG(task_completed), 0) AS task_success_rate
+                FROM feedback
+                """
+            ).fetchone()
+            by_tester_rows = connection.execute(
+                """
+                SELECT
+                    tester_id,
+                    COUNT(*) AS submissions,
+                    ROUND(AVG(rating), 3) AS average_rating,
+                    ROUND(AVG(task_completed), 3) AS task_success_rate
+                FROM feedback
+                GROUP BY tester_id
+                ORDER BY submissions DESC, tester_id ASC
+                """
+            ).fetchall()
+
+        return {
+            "feedback_count": int(aggregate["feedback_count"]),
+            "average_rating": round(float(aggregate["average_rating"]), 3),
+            "task_success_rate": round(float(aggregate["task_success_rate"]), 3),
+            "by_tester": [
+                {
+                    "tester_id": row["tester_id"],
+                    "submissions": int(row["submissions"]),
+                    "average_rating": float(row["average_rating"]),
+                    "task_success_rate": float(row["task_success_rate"]),
+                }
+                for row in by_tester_rows
+            ],
+        }

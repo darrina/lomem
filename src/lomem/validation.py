@@ -95,3 +95,68 @@ def validate_feedback_payload(payload: dict[str, Any] | None) -> tuple[str, int,
         raise ValidationError("Feedback validation failed.", errors)
 
     return run_id, rating, comment
+
+
+def validate_feedback_v2_payload(
+    payload: dict[str, Any] | None,
+) -> tuple[str, int, str, str, bool]:
+    if not payload:
+        raise ValidationError("Request body must be a JSON object.")
+
+    run_id = payload.get("run_id")
+    rating = payload.get("rating")
+    comment = payload.get("comment", "")
+    tester_id = payload.get("tester_id", "anonymous")
+    task_completed = payload.get("task_completed")
+    errors: dict[str, str] = {}
+
+    if not isinstance(run_id, str) or not run_id.strip():
+        errors["run_id"] = "run_id is required."
+
+    if not isinstance(rating, int) or not 1 <= rating <= 5:
+        errors["rating"] = "rating must be an integer between 1 and 5."
+
+    if not isinstance(comment, str):
+        errors["comment"] = "comment must be a string."
+    elif len(comment) > 1000:
+        errors["comment"] = "comment must be at most 1000 characters."
+
+    if not isinstance(tester_id, str) or not tester_id.strip():
+        errors["tester_id"] = "tester_id must be a non-empty string."
+    elif len(tester_id) > 128:
+        errors["tester_id"] = "tester_id must be at most 128 characters."
+
+    if not isinstance(task_completed, bool):
+        errors["task_completed"] = "task_completed must be a boolean."
+
+    if errors:
+        raise ValidationError("Feedback validation failed.", errors)
+
+    return run_id, rating, comment, tester_id.strip(), task_completed
+
+
+def validate_compare_payload(payload: dict[str, Any] | None) -> list[str]:
+    if not payload:
+        raise ValidationError("Request body must be a JSON object.")
+
+    run_ids = payload.get("run_ids")
+    errors: dict[str, str] = {}
+
+    if not isinstance(run_ids, list):
+        errors["run_ids"] = "run_ids must be an array."
+    else:
+        if len(run_ids) < 2:
+            errors["run_ids"] = "run_ids must include at least two run identifiers."
+        elif len(run_ids) > 5:
+            errors["run_ids"] = "run_ids must include at most five run identifiers."
+        else:
+            for index, run_id in enumerate(run_ids):
+                if not isinstance(run_id, str) or not run_id.strip():
+                    errors[f"run_ids[{index}]"] = "Each run_id must be a non-empty string."
+        if len(set(run_ids)) != len(run_ids):
+            errors["run_ids_unique"] = "run_ids must be unique."
+
+    if errors:
+        raise ValidationError("Run comparison validation failed.", errors)
+
+    return [run_id.strip() for run_id in run_ids]

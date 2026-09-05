@@ -55,16 +55,71 @@ def test_run_success_and_feedback_capture(client):
 
     feedback_response = client.post(
         "/api/feedback",
-        json={"run_id": run_body["run_id"], "rating": 4, "comment": "Clear enough for phase 1."},
+        json={
+            "run_id": run_body["run_id"],
+            "rating": 4,
+            "comment": "Clear enough for phase 2.",
+            "tester_id": "pilot-user-1",
+            "task_completed": True,
+        },
     )
     feedback_body = feedback_response.get_json()
 
     assert feedback_response.status_code == 201
     assert feedback_body["status"] == "recorded"
 
+    summary_response = client.get("/api/feedback/summary")
+    summary_body = summary_response.get_json()
+    assert summary_response.status_code == 200
+    assert summary_body["feedback_count"] == 1
+    assert summary_body["average_rating"] == 4.0
+    assert summary_body["task_success_rate"] == 1.0
+    assert summary_body["by_tester"][0]["tester_id"] == "pilot-user-1"
+
+
+def test_compare_runs(client):
+    baseline = client.post(
+        "/api/runs",
+        json={
+            "dataset_id": "minimal-baseline",
+            "scenario_id": "alpha-stability",
+            "inputs": {
+                "memory_load": 30,
+                "signal_strength": 80,
+                "noise_level": 15,
+                "adaptation_bias": 0.2,
+            },
+        },
+    ).get_json()
+    candidate = client.post(
+        "/api/runs",
+        json={
+            "dataset_id": "minimal-baseline",
+            "scenario_id": "beta-stress",
+            "inputs": {
+                "memory_load": 85,
+                "signal_strength": 60,
+                "noise_level": 35,
+                "adaptation_bias": -0.1,
+            },
+        },
+    ).get_json()
+
+    compare_response = client.post(
+        "/api/runs/compare",
+        json={"run_ids": [baseline["run_id"], candidate["run_id"]]},
+    )
+    compare_body = compare_response.get_json()
+
+    assert compare_response.status_code == 200
+    assert compare_body["baseline_run_id"] == baseline["run_id"]
+    assert len(compare_body["comparisons"]) == 1
+    assert compare_body["comparisons"][0]["run_id"] == candidate["run_id"]
+    assert compare_body["comparisons"][0]["scenario_changed"] is True
+
 
 def test_ui_smoke(client):
     response = client.get("/")
 
     assert response.status_code == 200
-    assert b"LoMem Phase 1 MVP" in response.data
+    assert b"LoMem Phase 2 Interactive Prototype" in response.data

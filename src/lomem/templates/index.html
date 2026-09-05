@@ -3,9 +3,9 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>LoMem Phase 1 MVP</title>
+    <title>LoMem Phase 2 Prototype</title>
     <style>
-      body { font-family: Arial, sans-serif; margin: 2rem; max-width: 900px; }
+      body { font-family: Arial, sans-serif; margin: 2rem; max-width: 1100px; }
       h1 { margin-bottom: 0.25rem; }
       p { margin-top: 0; color: #555; }
       .card { border: 1px solid #ddd; border-radius: 8px; padding: 1rem; margin: 1rem 0; }
@@ -14,51 +14,103 @@
       button { margin-top: 1rem; cursor: pointer; }
       pre { background: #f6f8fa; padding: 1rem; overflow: auto; }
       .error { color: #b00020; font-weight: 600; }
+      .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; }
+      .inline { display: flex; gap: 0.5rem; align-items: center; }
+      .inline > * { flex: 1; }
+      table { width: 100%; border-collapse: collapse; margin-top: 0.75rem; }
+      th, td { border: 1px solid #ddd; padding: 0.5rem; text-align: left; font-size: 0.9rem; }
+      @media (max-width: 800px) {
+        .grid { grid-template-columns: 1fr; }
+      }
     </style>
   </head>
   <body>
-    <h1>LoMem Phase 1 MVP</h1>
-    <p>Run the placeholder validation engine against a sample dataset and capture structured feedback.</p>
+    <h1>LoMem Phase 2 Interactive Prototype</h1>
+    <p>Run scenarios, compare outcomes, and capture structured usability evidence for internal and early-adopter testing.</p>
+
+    <div class="grid">
+      <section class="card">
+        <h2>Scenario Run</h2>
+        <form id="run-form">
+          <label for="dataset">Dataset</label>
+          <select id="dataset" required></select>
+
+          <label for="scenario">Scenario</label>
+          <select id="scenario" required></select>
+
+          <label for="memory-load">Memory Load (0-100)</label>
+          <input id="memory-load" type="number" min="0" max="100" value="45" required />
+
+          <label for="signal-strength">Signal Strength (0-100)</label>
+          <input id="signal-strength" type="number" min="0" max="100" value="75" required />
+
+          <label for="noise-level">Noise Level (0-100)</label>
+          <input id="noise-level" type="number" min="0" max="100" value="20" required />
+
+          <label for="adaptation-bias">Adaptation Bias (-1.0 to 1.0)</label>
+          <input id="adaptation-bias" type="number" min="-1" max="1" step="0.01" value="0.2" required />
+
+          <button type="submit">Run Scenario</button>
+        </form>
+        <p id="run-error" class="error"></p>
+        <pre id="run-output">No run executed yet.</pre>
+      </section>
+
+      <section class="card">
+        <h2>Run Feedback</h2>
+        <form id="feedback-form">
+          <label for="tester-id">Tester ID</label>
+          <input id="tester-id" type="text" maxlength="128" value="pilot-user-1" required />
+
+          <label for="rating">Rating (1-5)</label>
+          <input id="rating" type="number" min="1" max="5" value="4" required />
+
+          <label for="comment">Comment</label>
+          <textarea id="comment" rows="4" placeholder="Describe usability, output clarity, and trust in result."></textarea>
+
+          <label class="inline" for="task-completed">
+            <span>Task completed successfully</span>
+            <input id="task-completed" type="checkbox" checked />
+          </label>
+
+          <button type="submit">Submit Feedback</button>
+        </form>
+        <p id="feedback-status"></p>
+        <pre id="feedback-summary">No feedback summary available yet.</pre>
+      </section>
+    </div>
 
     <section class="card">
-      <h2>Scenario Run</h2>
-      <form id="run-form">
-        <label for="dataset">Dataset</label>
-        <select id="dataset" required></select>
-
-        <label for="scenario">Scenario</label>
-        <select id="scenario" required></select>
-
-        <label for="memory-load">Memory Load (0-100)</label>
-        <input id="memory-load" type="number" min="0" max="100" value="45" required />
-
-        <label for="signal-strength">Signal Strength (0-100)</label>
-        <input id="signal-strength" type="number" min="0" max="100" value="75" required />
-
-        <label for="noise-level">Noise Level (0-100)</label>
-        <input id="noise-level" type="number" min="0" max="100" value="20" required />
-
-        <label for="adaptation-bias">Adaptation Bias (-1.0 to 1.0)</label>
-        <input id="adaptation-bias" type="number" min="-1" max="1" step="0.01" value="0.2" required />
-
-        <button type="submit">Run Scenario</button>
-      </form>
-      <p id="run-error" class="error"></p>
-      <pre id="run-output">No run executed yet.</pre>
-    </section>
-
-    <section class="card">
-      <h2>Run Feedback</h2>
-      <form id="feedback-form">
-        <label for="rating">Rating (1-5)</label>
-        <input id="rating" type="number" min="1" max="5" value="4" required />
-
-        <label for="comment">Comment</label>
-        <textarea id="comment" rows="4" placeholder="Describe usability, output clarity, and trust in result."></textarea>
-
-        <button type="submit">Submit Feedback</button>
-      </form>
-      <p id="feedback-status"></p>
+      <h2>Recent Runs and Comparison</h2>
+      <div class="inline">
+        <button id="refresh-runs" type="button">Refresh Recent Runs</button>
+      </div>
+      <table>
+        <thead>
+          <tr>
+            <th>Run ID</th>
+            <th>Dataset</th>
+            <th>Scenario</th>
+            <th>Created</th>
+          </tr>
+        </thead>
+        <tbody id="runs-table-body">
+          <tr><td colspan="4">No runs yet.</td></tr>
+        </tbody>
+      </table>
+      <div class="inline">
+        <div>
+          <label for="compare-baseline">Baseline Run</label>
+          <select id="compare-baseline"></select>
+        </div>
+        <div>
+          <label for="compare-candidate">Candidate Run</label>
+          <select id="compare-candidate"></select>
+        </div>
+      </div>
+      <button id="compare-runs" type="button">Compare Selected Runs</button>
+      <p id="compare-error" class="error"></p>
+      <pre id="compare-output">No comparison executed yet.</pre>
     </section>
 
     <script>
@@ -69,8 +121,17 @@
       const runError = document.getElementById("run-error");
       const feedbackForm = document.getElementById("feedback-form");
       const feedbackStatus = document.getElementById("feedback-status");
+      const feedbackSummary = document.getElementById("feedback-summary");
+      const runsTableBody = document.getElementById("runs-table-body");
+      const compareBaseline = document.getElementById("compare-baseline");
+      const compareCandidate = document.getElementById("compare-candidate");
+      const compareButton = document.getElementById("compare-runs");
+      const compareOutput = document.getElementById("compare-output");
+      const compareError = document.getElementById("compare-error");
+      const refreshRunsButton = document.getElementById("refresh-runs");
       let lastRunId = null;
       let catalog = null;
+      let recentRuns = [];
 
       function fillScenarioOptions(datasetId) {
         scenarioSelect.innerHTML = "";
@@ -98,6 +159,61 @@
         if (catalog.datasets.length > 0) {
           fillScenarioOptions(catalog.datasets[0].id);
         }
+      }
+
+      function renderRunSelectors() {
+        compareBaseline.innerHTML = "";
+        compareCandidate.innerHTML = "";
+        if (recentRuns.length === 0) {
+          return;
+        }
+        for (const run of recentRuns) {
+          const label = `${run.run_id.slice(0, 8)} - ${run.dataset_id}/${run.scenario_id}`;
+          const baselineOption = document.createElement("option");
+          baselineOption.value = run.run_id;
+          baselineOption.textContent = label;
+          compareBaseline.appendChild(baselineOption);
+
+          const candidateOption = document.createElement("option");
+          candidateOption.value = run.run_id;
+          candidateOption.textContent = label;
+          compareCandidate.appendChild(candidateOption);
+        }
+        if (recentRuns.length > 1) {
+          compareCandidate.selectedIndex = 1;
+        }
+      }
+
+      function renderRunsTable() {
+        runsTableBody.innerHTML = "";
+        if (recentRuns.length === 0) {
+          runsTableBody.innerHTML = "<tr><td colspan='4'>No runs yet.</td></tr>";
+          return;
+        }
+        for (const run of recentRuns) {
+          const row = document.createElement("tr");
+          row.innerHTML = `
+            <td>${run.run_id}</td>
+            <td>${run.dataset_id}</td>
+            <td>${run.scenario_id}</td>
+            <td>${run.created_at}</td>
+          `;
+          runsTableBody.appendChild(row);
+        }
+      }
+
+      async function refreshRuns() {
+        const response = await fetch("/api/runs?limit=20");
+        const body = await response.json();
+        recentRuns = body.runs || [];
+        renderRunsTable();
+        renderRunSelectors();
+      }
+
+      async function refreshFeedbackSummary() {
+        const response = await fetch("/api/feedback/summary");
+        const body = await response.json();
+        feedbackSummary.textContent = JSON.stringify(body, null, 2);
       }
 
       datasetSelect.addEventListener("change", (event) => {
@@ -134,6 +250,7 @@
 
         lastRunId = body.run_id;
         runOutput.textContent = JSON.stringify(body, null, 2);
+        await refreshRuns();
       });
 
       feedbackForm.addEventListener("submit", async (event) => {
@@ -147,6 +264,8 @@
           run_id: lastRunId,
           rating: Number(document.getElementById("rating").value),
           comment: document.getElementById("comment").value,
+          tester_id: document.getElementById("tester-id").value,
+          task_completed: document.getElementById("task-completed").checked,
         };
 
         const response = await fetch("/api/feedback", {
@@ -160,9 +279,47 @@
           return;
         }
         feedbackStatus.textContent = `Feedback recorded for run ${body.run_id}.`;
+        await refreshFeedbackSummary();
       });
 
-      loadCatalog();
+      compareButton.addEventListener("click", async () => {
+        compareError.textContent = "";
+        const baseline = compareBaseline.value;
+        const candidate = compareCandidate.value;
+        if (!baseline || !candidate) {
+          compareError.textContent = "Select two runs to compare.";
+          return;
+        }
+        if (baseline === candidate) {
+          compareError.textContent = "Baseline and candidate runs must be different.";
+          return;
+        }
+
+        const response = await fetch("/api/runs/compare", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ run_ids: [baseline, candidate] }),
+        });
+        const body = await response.json();
+        if (!response.ok) {
+          compareError.textContent = body.error || "Comparison failed.";
+          compareOutput.textContent = JSON.stringify(body, null, 2);
+          return;
+        }
+        compareOutput.textContent = JSON.stringify(body, null, 2);
+      });
+
+      refreshRunsButton.addEventListener("click", async () => {
+        await refreshRuns();
+      });
+
+      async function initialize() {
+        await loadCatalog();
+        await refreshRuns();
+        await refreshFeedbackSummary();
+      }
+
+      initialize();
     </script>
   </body>
 </html>
