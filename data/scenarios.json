@@ -1,0 +1,23 @@
+{
+  "datasets": [
+    {
+      "id": "minimal-baseline",
+      "name": "Minimal Baseline Dataset",
+      "description": "Small deterministic dataset for LoMem prototype hypothesis checks.",
+      "scenarios": [
+        {
+          "id": "alpha-stability",
+          "name": "Alpha Stability",
+          "baseline_score": 0.62,
+          "sensitivity": 1.15
+        },
+        {
+          "id": "beta-stress",
+          "name": "Beta Stress",
+          "baseline_score": 0.48,
+          "sensitivity": 1.35
+        }
+      ]
+    }
+  ]
+}

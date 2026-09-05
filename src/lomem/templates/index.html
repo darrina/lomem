@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>LoMem Phase 1 MVP</title>
+    <style>
+      body { font-family: Arial, sans-serif; margin: 2rem; max-width: 900px; }
+      h1 { margin-bottom: 0.25rem; }
+      p { margin-top: 0; color: #555; }
+      .card { border: 1px solid #ddd; border-radius: 8px; padding: 1rem; margin: 1rem 0; }
+      label { display: block; font-weight: 600; margin: 0.5rem 0 0.25rem; }
+      input, select, textarea, button { width: 100%; padding: 0.5rem; box-sizing: border-box; }
+      button { margin-top: 1rem; cursor: pointer; }
+      pre { background: #f6f8fa; padding: 1rem; overflow: auto; }
+      .error { color: #b00020; font-weight: 600; }
+    </style>
+  </head>
+  <body>
+    <h1>LoMem Phase 1 MVP</h1>
+    <p>Run the placeholder validation engine against a sample dataset and capture structured feedback.</p>
+
+    <section class="card">
+      <h2>Scenario Run</h2>
+      <form id="run-form">
+        <label for="dataset">Dataset</label>
+        <select id="dataset" required></select>
+
+        <label for="scenario">Scenario</label>
+        <select id="scenario" required></select>
+
+        <label for="memory-load">Memory Load (0-100)</label>
+        <input id="memory-load" type="number" min="0" max="100" value="45" required />
+
+        <label for="signal-strength">Signal Strength (0-100)</label>
+        <input id="signal-strength" type="number" min="0" max="100" value="75" required />
+
+        <label for="noise-level">Noise Level (0-100)</label>
+        <input id="noise-level" type="number" min="0" max="100" value="20" required />
+
+        <label for="adaptation-bias">Adaptation Bias (-1.0 to 1.0)</label>
+        <input id="adaptation-bias" type="number" min="-1" max="1" step="0.01" value="0.2" required />
+
+        <button type="submit">Run Scenario</button>
+      </form>
+      <p id="run-error" class="error"></p>
+      <pre id="run-output">No run executed yet.</pre>
+    </section>
+
+    <section class="card">
+      <h2>Run Feedback</h2>
+      <form id="feedback-form">
+        <label for="rating">Rating (1-5)</label>
+        <input id="rating" type="number" min="1" max="5" value="4" required />
+
+        <label for="comment">Comment</label>
+        <textarea id="comment" rows="4" placeholder="Describe usability, output clarity, and trust in result."></textarea>
+
+        <button type="submit">Submit Feedback</button>
+      </form>
+      <p id="feedback-status"></p>
+    </section>
+
+    <script>
+      const runForm = document.getElementById("run-form");
+      const datasetSelect = document.getElementById("dataset");
+      const scenarioSelect = document.getElementById("scenario");
+      const runOutput = document.getElementById("run-output");
+      const runError = document.getElementById("run-error");
+      const feedbackForm = document.getElementById("feedback-form");
+      const feedbackStatus = document.getElementById("feedback-status");
+      let lastRunId = null;
+      let catalog = null;
+
+      function fillScenarioOptions(datasetId) {
+        scenarioSelect.innerHTML = "";
+        const dataset = catalog.datasets.find((item) => item.id === datasetId);
+        if (!dataset) {
+          return;
+        }
+        for (const scenario of dataset.scenarios) {
+          const option = document.createElement("option");
+          option.value = scenario.id;
+          option.textContent = `${scenario.name} (${scenario.id})`;
+          scenarioSelect.appendChild(option);
+        }
+      }
+
+      async function loadCatalog() {
+        const response = await fetch("/api/datasets");
+        catalog = await response.json();
+        for (const dataset of catalog.datasets) {
+          const option = document.createElement("option");
+          option.value = dataset.id;
+          option.textContent = `${dataset.name} (${dataset.id})`;
+          datasetSelect.appendChild(option);
+        }
+        if (catalog.datasets.length > 0) {
+          fillScenarioOptions(catalog.datasets[0].id);
+        }
+      }
+
+      datasetSelect.addEventListener("change", (event) => {
+        fillScenarioOptions(event.target.value);
+      });
+
+      runForm.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        runError.textContent = "";
+        feedbackStatus.textContent = "";
+
+        const payload = {
+          dataset_id: datasetSelect.value,
+          scenario_id: scenarioSelect.value,
+          inputs: {
+            memory_load: Number(document.getElementById("memory-load").value),
+            signal_strength: Number(document.getElementById("signal-strength").value),
+            noise_level: Number(document.getElementById("noise-level").value),
+            adaptation_bias: Number(document.getElementById("adaptation-bias").value),
+          },
+        };
+
+        const response = await fetch("/api/runs", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+        const body = await response.json();
+        if (!response.ok) {
+          runError.textContent = body.error || "Run failed.";
+          runOutput.textContent = JSON.stringify(body, null, 2);
+          return;
+        }
+
+        lastRunId = body.run_id;
+        runOutput.textContent = JSON.stringify(body, null, 2);
+      });
+
+      feedbackForm.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        if (!lastRunId) {
+          feedbackStatus.textContent = "Execute a run before submitting feedback.";
+          return;
+        }
+
+        const payload = {
+          run_id: lastRunId,
+          rating: Number(document.getElementById("rating").value),
+          comment: document.getElementById("comment").value,
+        };
+
+        const response = await fetch("/api/feedback", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+        const body = await response.json();
+        if (!response.ok) {
+          feedbackStatus.textContent = body.error || "Feedback submission failed.";
+          return;
+        }
+        feedbackStatus.textContent = `Feedback recorded for run ${body.run_id}.`;
+      });
+
+      loadCatalog();
+    </script>
+  </body>
+</html>
