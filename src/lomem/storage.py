@@ -157,6 +157,33 @@ class Storage:
             for row in rows
         ]
 
+    def list_runs_detailed(self, limit: int = 100) -> list[dict[str, Any]]:
+        with self._connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT run_id, created_at, mechanism_version, dataset_id, scenario_id,
+                       input_json, output_json, status
+                FROM runs
+                ORDER BY created_at DESC
+                LIMIT ?
+                """,
+                (limit,),
+            ).fetchall()
+
+        return [
+            {
+                "run_id": row["run_id"],
+                "created_at": row["created_at"],
+                "mechanism_version": row["mechanism_version"],
+                "dataset_id": row["dataset_id"],
+                "scenario_id": row["scenario_id"],
+                "inputs": json.loads(row["input_json"]),
+                "output": json.loads(row["output_json"]),
+                "status": row["status"],
+            }
+            for row in rows
+        ]
+
     def save_feedback(
         self,
         run_id: str,

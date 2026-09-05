@@ -32,6 +32,15 @@ def _read_number(inputs: dict[str, Any], field: str, minimum: float, maximum: fl
     return float(value)
 
 
+def validate_run_inputs(inputs: dict[str, Any]) -> RunInputs:
+    return RunInputs(
+        memory_load=_read_number(inputs, "memory_load", 0, 100),
+        signal_strength=_read_number(inputs, "signal_strength", 0, 100),
+        noise_level=_read_number(inputs, "noise_level", 0, 100),
+        adaptation_bias=_read_number(inputs, "adaptation_bias", -1.0, 1.0),
+    )
+
+
 def validate_run_payload(
     payload: dict[str, Any] | None,
     dataset_index: dict[str, dict[str, Any]],
@@ -61,12 +70,7 @@ def validate_run_payload(
     if errors:
         raise ValidationError("Input validation failed.", errors)
 
-    normalized = RunInputs(
-        memory_load=_read_number(inputs, "memory_load", 0, 100),
-        signal_strength=_read_number(inputs, "signal_strength", 0, 100),
-        noise_level=_read_number(inputs, "noise_level", 0, 100),
-        adaptation_bias=_read_number(inputs, "adaptation_bias", -1.0, 1.0),
-    )
+    normalized = validate_run_inputs(inputs)
 
     return dataset_id, scenario_id, normalized
 
@@ -160,3 +164,59 @@ def validate_compare_payload(payload: dict[str, Any] | None) -> list[str]:
         raise ValidationError("Run comparison validation failed.", errors)
 
     return [run_id.strip() for run_id in run_ids]
+
+
+def validate_batch_payload(
+    payload: dict[str, Any] | None,
+    dataset_index: dict[str, dict[str, Any]],
+) -> tuple[str, str, str, list[RunInputs]]:
+    if not payload:
+        raise ValidationError("Request body must be a JSON object.")
+
+    dataset_id = payload.get("dataset_id")
+    scenario_id = payload.get("scenario_id")
+    label = payload.get("label", "batch-experiment")
+    variants = payload.get("variants")
+    errors: dict[str, str] = {}
+
+    if not isinstance(dataset_id, str) or not dataset_id.strip():
+        errors["dataset_id"] = "dataset_id is required."
+    elif dataset_id not in dataset_index:
+        errors["dataset_id"] = "Unknown dataset_id."
+
+    if not isinstance(scenario_id, str) or not scenario_id.strip():
+        errors["scenario_id"] = "scenario_id is required."
+    elif isinstance(dataset_id, str) and dataset_id in dataset_index:
+        if scenario_id not in dataset_index[dataset_id]["scenarios"]:
+            errors["scenario_id"] = "Unknown scenario_id for dataset."
+
+    if not isinstance(label, str) or not label.strip():
+        errors["label"] = "label must be a non-empty string."
+    elif len(label) > 128:
+        errors["label"] = "label must be at most 128 characters."
+
+    if not isinstance(variants, list):
+        errors["variants"] = "variants must be an array."
+    else:
+        if len(variants) < 2:
+            errors["variants"] = "variants must include at least two input variants."
+        elif len(variants) > 50:
+            errors["variants"] = "variants must include at most 50 input variants."
+
+    if errors:
+        raise ValidationError("Batch validation failed.", errors)
+
+    normalized_variants: list[RunInputs] = []
+    for index, variant in enumerate(variants):
+        if not isinstance(variant, dict):
+            raise ValidationError(
+                "Batch validation failed.",
+                {f"variants[{index}]": "Each variant must be an object."},
+            )
+        try:
+            normalized_variants.append(validate_run_inputs(variant))
+        except ValidationError as err:
+            nested_errors = {f"variants[{index}].{k}": v for k, v in err.errors.items()}
+            raise ValidationError("Batch validation failed.", nested_errors) from err
+
+    return dataset_id, scenario_id, label.strip(), normalized_variants

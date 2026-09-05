@@ -118,8 +118,58 @@ def test_compare_runs(client):
     assert compare_body["comparisons"][0]["scenario_changed"] is True
 
 
+def test_batch_runs_and_stability_analytics(client):
+    batch_response = client.post(
+        "/api/runs/batch",
+        json={
+            "label": "test-sweep",
+            "dataset_id": "minimal-baseline",
+            "scenario_id": "alpha-stability",
+            "variants": [
+                {
+                    "memory_load": 15,
+                    "signal_strength": 80,
+                    "noise_level": 10,
+                    "adaptation_bias": 0.2,
+                },
+                {
+                    "memory_load": 45,
+                    "signal_strength": 80,
+                    "noise_level": 10,
+                    "adaptation_bias": 0.2,
+                },
+                {
+                    "memory_load": 75,
+                    "signal_strength": 80,
+                    "noise_level": 10,
+                    "adaptation_bias": 0.2,
+                },
+            ],
+        },
+    )
+    batch_body = batch_response.get_json()
+
+    assert batch_response.status_code == 201
+    assert batch_body["summary"]["label"] == "test-sweep"
+    assert batch_body["summary"]["run_count"] == 3
+    assert len(batch_body["runs"]) == 3
+
+    detailed_runs_response = client.get("/api/runs/detailed?limit=10")
+    detailed_runs_body = detailed_runs_response.get_json()
+    assert detailed_runs_response.status_code == 200
+    assert len(detailed_runs_body["runs"]) == 3
+    assert "output" in detailed_runs_body["runs"][0]
+
+    stability_response = client.get("/api/analytics/stability?limit=10")
+    stability_body = stability_response.get_json()
+    assert stability_response.status_code == 200
+    assert stability_body["run_count"] == 3
+    assert len(stability_body["scenario_metrics"]) == 1
+    assert stability_body["scenario_metrics"][0]["scenario_id"] == "alpha-stability"
+
+
 def test_ui_smoke(client):
     response = client.get("/")
 
     assert response.status_code == 200
-    assert b"LoMem Phase 2 Interactive Prototype" in response.data
+    assert b"LoMem Phase 3 Near-Functional Prototype" in response.data
