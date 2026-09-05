@@ -5,18 +5,36 @@ import pytest
 from lomem import create_app
 
 
-@pytest.fixture()
-def client(tmp_path):
-    app = create_app(
-        {
-            "TESTING": True,
-            "LOMEM_DB_BACKEND": "sqlite",
-            "LOMEM_DB_PATH": str(tmp_path / "lomem-test.db"),
-            "LOMEM_DB_URL": None,
-            "LOMEM_DATA_PATH": str(Path(__file__).resolve().parents[1] / "data" / "scenarios.json"),
-        }
+@pytest.fixture(params=["sqlite", "iris"], ids=["backend-sqlite", "backend-iris"])
+def client(tmp_path, request):
+    backend = request.param
+    app_config = {
+        "TESTING": True,
+        "LOMEM_DB_BACKEND": backend,
+        "LOMEM_DATA_PATH": str(Path(__file__).resolve().parents[1] / "data" / "scenarios.json"),
+    }
+    if backend == "sqlite":
+        app_config["LOMEM_DB_PATH"] = str(tmp_path / "lomem-test.db")
+        app_config["LOMEM_DB_URL"] = None
+    else:
+        app_config["LOMEM_DB_PATH"] = str(tmp_path / "unused-iris-path.db")
+        app_config["LOMEM_DB_URL"] = "iris://_SYSTEM:SYS@localhost:1972/USER"
+
+    app = create_app(app_config)
+    test_client = app.test_client()
+    reset_response = test_client.post(
+        "/api/persistence/import",
+        json={
+            "mode": "replace",
+            "bundle": {
+                "format": "lomem-persistence-bundle",
+                "version": 1,
+                "data": {"runs": [], "events": [], "feedback": []},
+            },
+        },
     )
-    return app.test_client()
+    assert reset_response.status_code == 201
+    return test_client
 
 
 def test_run_validation_error_missing_inputs(client):
@@ -206,7 +224,7 @@ def test_persistence_export_and_replace_import(client):
     info_response = client.get("/api/persistence/info")
     info_body = info_response.get_json()
     assert info_response.status_code == 200
-    assert info_body["backend"] == "sqlite"
+    assert info_body["backend"] in {"sqlite", "iris"}
 
     export_response = client.get("/api/persistence/export")
     export_body = export_response.get_json()

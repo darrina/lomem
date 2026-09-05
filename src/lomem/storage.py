@@ -2,10 +2,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import UTC, datetime
+import json
 from pathlib import Path
 from typing import Any
 
-from sqlalchemy import JSON, Boolean, DateTime, Float, ForeignKey, Integer, String, create_engine, func
+from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, String, Text, create_engine, func
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column, relationship, sessionmaker
 
 
@@ -37,6 +38,14 @@ def build_database_url(backend: str, db_path: str, db_url: str | None) -> str:
     raise ValueError(f"Unsupported LOMEM_DB_BACKEND: {backend}")
 
 
+def _serialize_payload(value: dict[str, Any]) -> str:
+    return json.dumps(value, separators=(",", ":"))
+
+
+def _deserialize_payload(value: str) -> dict[str, Any]:
+    return json.loads(value)
+
+
 class Base(DeclarativeBase):
     pass
 
@@ -49,8 +58,8 @@ class RunModel(Base):
     mechanism_version: Mapped[str] = mapped_column(String(128), nullable=False)
     dataset_id: Mapped[str] = mapped_column(String(128), nullable=False)
     scenario_id: Mapped[str] = mapped_column(String(128), nullable=False)
-    input_json: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
-    output_json: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
+    input_json: Mapped[str] = mapped_column(Text, nullable=False)
+    output_json: Mapped[str] = mapped_column(Text, nullable=False)
     status: Mapped[str] = mapped_column(String(32), nullable=False)
 
     feedback: Mapped[list["FeedbackModel"]] = relationship(back_populates="run")
@@ -63,7 +72,7 @@ class EventModel(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     run_id: Mapped[str | None] = mapped_column(ForeignKey("runs.run_id"), nullable=True)
     event_type: Mapped[str] = mapped_column(String(64), nullable=False)
-    payload_json: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
+    payload_json: Mapped[str] = mapped_column(Text, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
     run: Mapped[RunModel | None] = relationship(back_populates="events")
@@ -113,7 +122,7 @@ class Storage:
                 EventModel(
                     run_id=run_id,
                     event_type=event_type,
-                    payload_json=payload,
+                    payload_json=_serialize_payload(payload),
                     created_at=_now_utc(),
                 )
             )
@@ -136,8 +145,8 @@ class Storage:
                     mechanism_version=mechanism_version,
                     dataset_id=dataset_id,
                     scenario_id=scenario_id,
-                    input_json=inputs,
-                    output_json=output,
+                    input_json=_serialize_payload(inputs),
+                    output_json=_serialize_payload(output),
                     status="completed",
                 )
             )
@@ -150,8 +159,8 @@ class Storage:
             "mechanism_version": row.mechanism_version,
             "dataset_id": row.dataset_id,
             "scenario_id": row.scenario_id,
-            "inputs": row.input_json,
-            "output": row.output_json,
+            "inputs": _deserialize_payload(row.input_json),
+            "output": _deserialize_payload(row.output_json),
             "status": row.status,
         }
 
@@ -283,8 +292,8 @@ class Storage:
                         "mechanism_version": row.mechanism_version,
                         "dataset_id": row.dataset_id,
                         "scenario_id": row.scenario_id,
-                        "input_json": row.input_json,
-                        "output_json": row.output_json,
+                        "input_json": _deserialize_payload(row.input_json),
+                        "output_json": _deserialize_payload(row.output_json),
                         "status": row.status,
                     }
                     for row in runs
@@ -294,7 +303,7 @@ class Storage:
                         "id": row.id,
                         "run_id": row.run_id,
                         "event_type": row.event_type,
-                        "payload_json": row.payload_json,
+                        "payload_json": _deserialize_payload(row.payload_json),
                         "created_at": _datetime_to_iso(row.created_at),
                     }
                     for row in events
@@ -339,8 +348,8 @@ class Storage:
                         mechanism_version=row["mechanism_version"],
                         dataset_id=row["dataset_id"],
                         scenario_id=row["scenario_id"],
-                        input_json=row["input_json"],
-                        output_json=row["output_json"],
+                        input_json=_serialize_payload(row["input_json"]),
+                        output_json=_serialize_payload(row["output_json"]),
                         status=row["status"],
                     )
                 )
@@ -351,7 +360,7 @@ class Storage:
                         id=row["id"],
                         run_id=row.get("run_id"),
                         event_type=row["event_type"],
-                        payload_json=row["payload_json"],
+                        payload_json=_serialize_payload(row["payload_json"]),
                         created_at=_normalize_timestamp(row["created_at"]),
                     )
                 )

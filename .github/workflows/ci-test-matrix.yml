@@ -1,0 +1,65 @@
+name: CI Test Matrix
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: ci-test-matrix-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        backend: [sqlite, iris]
+
+    services:
+      iris:
+        image: intersystemsdc/iris-community:latest
+        ports:
+          - 1972:1972
+        options: >-
+          --health-cmd "iris session IRIS 'write 1' || exit 1"
+          --health-interval 30s
+          --health-timeout 10s
+          --health-retries 20
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Install dependencies
+        run: uv sync --extra dev --extra iris
+
+      - name: Wait for IRIS port
+        if: matrix.backend == 'iris'
+        shell: bash
+        run: |
+          for i in {1..40}; do
+            if (echo > /dev/tcp/127.0.0.1/1972) >/dev/null 2>&1; then
+              echo "IRIS is reachable on 127.0.0.1:1972"
+              exit 0
+            fi
+            echo "Waiting for IRIS to start..."
+            sleep 5
+          done
+          echo "IRIS did not become reachable in time."
+          exit 1
+
+      - name: Run backend test matrix
+        env:
+          LOMEM_DB_BACKEND: ${{ matrix.backend }}
+          LOMEM_DB_URL: ${{ matrix.backend == 'iris' && 'iris://_SYSTEM:SYS@127.0.0.1:1972/USER' || '' }}
+        run: uv run --extra dev pytest -q

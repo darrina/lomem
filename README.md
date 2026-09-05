@@ -51,6 +51,19 @@ If you use IRIS, install optional dependencies:
 python -m pip install -e ".[iris]"
 ```
 
+## Test matrix
+
+`tests/test_api.py` runs as a backend matrix (`sqlite` + `iris`) via a parametrized fixture, so each API test executes once per backend.
+
+Run the full matrix:
+
+```bash
+uv run --python 3.12 --extra dev pytest -q
+```
+
+CI runs the same matrix in GitHub Actions via `.github/workflows/ci-test-matrix.yml`.
+To enforce tests before merge, set branch protection for `main` and require the `CI Test Matrix / tests` status check.
+
 ## Data and persistence
 
 - Dataset catalog: `data/scenarios.json`
