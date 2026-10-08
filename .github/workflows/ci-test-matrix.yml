@@ -44,7 +44,11 @@ jobs:
 
       - name: Start IRIS container
         if: matrix.needs_iris
-        run: docker run -d --name lomem-iris -p 1972:1972 intersystemsdc/iris-community:2025.3
+        run: >-
+          docker run -d --name lomem-iris -p 1972:1972
+          --entrypoint /bin/bash
+          intersystemsdc/iris-community:preview
+          -lc 'iris start IRIS && tail -f /dev/null'
 
       - name: Wait for IRIS instance
         if: matrix.needs_iris
