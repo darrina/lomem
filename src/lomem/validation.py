@@ -220,3 +220,33 @@ def validate_batch_payload(
             raise ValidationError("Batch validation failed.", nested_errors) from err
 
     return dataset_id, scenario_id, label.strip(), normalized_variants
+
+
+def validate_persistence_import_payload(payload: dict[str, Any] | None) -> tuple[str, dict[str, Any]]:
+    if not payload:
+        raise ValidationError("Request body must be a JSON object.")
+
+    mode = payload.get("mode", "merge")
+    bundle = payload.get("bundle")
+    errors: dict[str, str] = {}
+
+    if not isinstance(mode, str) or mode not in {"merge", "replace"}:
+        errors["mode"] = "mode must be merge or replace."
+
+    if not isinstance(bundle, dict):
+        errors["bundle"] = "bundle must be an object."
+    else:
+        if bundle.get("format") != "lomem-persistence-bundle":
+            errors["bundle.format"] = "bundle.format must be lomem-persistence-bundle."
+        data = bundle.get("data")
+        if not isinstance(data, dict):
+            errors["bundle.data"] = "bundle.data must be an object."
+        else:
+            for key in ("runs", "events", "feedback"):
+                if key not in data or not isinstance(data[key], list):
+                    errors[f"bundle.data.{key}"] = f"bundle.data.{key} must be an array."
+
+    if errors:
+        raise ValidationError("Persistence import validation failed.", errors)
+
+    return mode, bundle

@@ -8,12 +8,13 @@ from flask import Flask, jsonify, render_template, request
 from .config import Config
 from .datasets import build_index, load_catalog
 from .engine import execute_validation, to_dict
-from .storage import Storage
+from .storage import PersistenceConfig, Storage
 from .validation import (
     ValidationError,
     validate_batch_payload,
     validate_compare_payload,
     validate_feedback_v2_payload,
+    validate_persistence_import_payload,
     validate_run_payload,
 )
 
@@ -74,7 +75,13 @@ def create_app(test_config: dict[str, Any] | None = None) -> Flask:
 
     catalog = load_catalog(app.config["LOMEM_DATA_PATH"])
     dataset_index = build_index(catalog)
-    storage = Storage(app.config["LOMEM_DB_PATH"])
+    storage = Storage(
+        PersistenceConfig(
+            backend=app.config["LOMEM_DB_BACKEND"],
+            db_path=app.config["LOMEM_DB_PATH"],
+            db_url=app.config.get("LOMEM_DB_URL"),
+        )
+    )
     mechanism_version = app.config["LOMEM_MECHANISM_VERSION"]
 
     @app.get("/")
@@ -271,5 +278,28 @@ def create_app(test_config: dict[str, Any] | None = None) -> Flask:
     @app.get("/api/feedback/summary")
     def feedback_summary():
         return jsonify(storage.get_feedback_summary())
+
+    @app.get("/api/persistence/info")
+    def persistence_info():
+        return jsonify(storage.backend_info())
+
+    @app.get("/api/persistence/export")
+    def export_persistence():
+        bundle = storage.export_bundle()
+        return jsonify(bundle)
+
+    @app.post("/api/persistence/import")
+    def import_persistence():
+        payload = request.get_json(silent=True)
+        try:
+            mode, bundle = validate_persistence_import_payload(payload)
+        except ValidationError as err:
+            return _error_response(err.message, 400, err.errors)
+
+        try:
+            counts = storage.import_bundle(bundle, mode)
+        except (ValueError, KeyError) as err:
+            return _error_response(str(err), 400)
+        return jsonify({"status": "imported", "mode": mode, "counts": counts}), 201
 
     return app
