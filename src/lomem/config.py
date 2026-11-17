@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 
 
@@ -7,6 +8,8 @@ DEFAULT_DB_PATH = REPO_ROOT / "data" / "lomem.db"
 
 
 class Config:
-    LOMEM_DATA_PATH = str(DEFAULT_DATA_PATH)
-    LOMEM_DB_PATH = str(DEFAULT_DB_PATH)
-    LOMEM_MECHANISM_VERSION = "placeholder-v1"
+    LOMEM_DATA_PATH = os.getenv("LOMEM_DATA_PATH", str(DEFAULT_DATA_PATH))
+    LOMEM_DB_PATH = os.getenv("LOMEM_DB_PATH", str(DEFAULT_DB_PATH))
+    LOMEM_DB_BACKEND = os.getenv("LOMEM_DB_BACKEND", "sqlite")
+    LOMEM_DB_URL = os.getenv("LOMEM_DB_URL")
+    LOMEM_MECHANISM_VERSION = os.getenv("LOMEM_MECHANISM_VERSION", "placeholder-v1")
